@@ -230,47 +230,52 @@ function norm(s){return String(s??"").toLowerCase().replace(/[^a-z0-9\u0C80-\u0C
 function numeric(v){const n=Number(String(v??"").replace(/[₹,\s]/g,"").replace(/[^\d.-]/g,""));return Number.isFinite(n)?n:null;}
 function updateDashboardMetrics(wb){
  const cards=[...document.querySelectorAll(".metric")];
- const dashboardName=wb.SheetNames.find(n=>norm(n).includes("dashboard item"));
- const kv={};
- if(dashboardName){
-   const rows=XLSX.utils.sheet_to_json(wb.Sheets[dashboardName],{header:1,defval:"",raw:false});
-   rows.forEach(r=>{
-     if(r.length>=2){
-       const key=norm(r[0]);
-       if(key && norm(r[0])!=="dashboard item value") kv[key]=r[1];
-     }
-   });
- }
- const findKV=(terms)=>{
+ const col=(sheet,terms)=>{
+   const headers=(sheet.headers||[]).map(h=>norm(h));
    for(const term of terms){
-     const hit=Object.entries(kv).find(([k])=>k.includes(norm(term)));
-     if(hit) return hit[1];
+     const idx=headers.findIndex(h=>h.includes(norm(term)));
+     if(idx>=0)return idx;
    }
-   return null;
+   return -1;
  };
- const activeCount=()=>{
-   const sheet=DATA.members;
-   if(!sheet.rows.length) return null;
-   const activeIdx=sheet.headers.findIndex(h=>norm(h).includes("active"));
-   if(activeIdx<0) return sheet.rows.length;
-   const active=sheet.rows.filter(r=>["yes","true","1","active"].includes(String(r[activeIdx]??"").trim().toLowerCase()));
-   return active.length;
+ const sumColumn=(sheet,terms,filterFn)=>{
+   const idx=col(sheet,terms); if(idx<0)return 0;
+   return (sheet.rows||[]).reduce((sum,row)=>{
+     if(filterFn&&!filterFn(row))return sum;
+     const n=numeric(row[idx]); return sum+(n===null?0:n);
+   },0);
  };
- const memberValue=findKV(["members","member count","total members"]);
- const contribution=findKV(["monthly contribution per member","monthly contribution","contribution per member"]);
- const expected=findKV(["expected monthly collection","monthly collection"]);
- const balance=findKV(["total account balance","account balance"]);
- const recover=findKV(["total amount needs to recover","amount needs to recover","outstanding"]);
- const fmt=(v,decimal=false)=>{
-   const n=numeric(v);
-   return "₹"+(n===null?0:n).toLocaleString("en-IN",{minimumFractionDigits:decimal?2:0,maximumFractionDigits:2});
- };
- if(cards[0]) cards[0].querySelector(".value").textContent=String(memberValue!==null?(numeric(memberValue)??0):(activeCount()??DATA.members.rows.length??0));
- if(cards[1]) cards[1].querySelector(".value").textContent=fmt(contribution);
- if(cards[2]) cards[2].querySelector(".value").textContent=fmt(expected);
- if(cards[3]) cards[3].querySelector(".value").textContent=fmt(balance,true);
- if(cards[4]) cards[4].querySelector(".value").textContent=fmt(recover,true);
- // Add source context to the card hints so it is clear these are workbook values.
+ const memberSheet=DATA.members, receivedSheet=DATA.received, chitSheet=DATA.chit;
+ const activeIdx=col(memberSheet,["active"]);
+ const contributionIdx=col(memberSheet,["monthly contribution"]);
+ const activeMembers=(memberSheet.rows||[]).filter(row=>{
+   if(!row.some(v=>String(v??"").trim()!==""))return false;
+   if(activeIdx<0)return true;
+   return ["yes","true","1","active"].includes(String(row[activeIdx]??"").trim().toLowerCase());
+ });
+ const memberCount=activeMembers.length;
+ const contributions=activeMembers.map(row=>numeric(row[contributionIdx])).filter(n=>n!==null);
+ const contribution=contributions.length?contributions.reduce((a,b)=>a+b,0)/contributions.length:0;
+ const expected=memberCount*contribution;
+ const received=sumColumn(receivedSheet,["received amount"]);
+ const taken=sumColumn(chitSheet,["total amount taken"]);
+ const balance=received-taken;
+ const statusIdx=col(chitSheet,["payment status"]);
+ const recoverIdx=col(chitSheet,["amount needs to be paid next month"]);
+ const recover=(chitSheet.rows||[]).reduce((sum,row)=>{
+   if(!row.some(v=>String(v??"").trim()!==""))return sum;
+   const status=statusIdx>=0?String(row[statusIdx]??"").trim().toLowerCase():"";
+   // Count only amounts still unpaid; blank status is not assumed unpaid.
+   if(status!=="unpaid"&&status!=="pending"&&status!=="outstanding")return sum;
+   const n=recoverIdx>=0?numeric(row[recoverIdx]):null;
+   return sum+(n===null?0:n);
+ },0);
+ const money=(n,decimal=false)=>"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:decimal?2:0,maximumFractionDigits:2});
+ if(cards[0])cards[0].querySelector(".value").textContent=String(memberCount||0);
+ if(cards[1])cards[1].querySelector(".value").textContent=money(contribution);
+ if(cards[2])cards[2].querySelector(".value").textContent=money(expected);
+ if(cards[3])cards[3].querySelector(".value").textContent=money(balance,true);
+ if(cards[4])cards[4].querySelector(".value").textContent=money(recover,true);
  cards.forEach(card=>{const hint=card.querySelector(".hint");if(hint)hint.dataset.source="excel";});
 }
 async function loadDashboardData(){
