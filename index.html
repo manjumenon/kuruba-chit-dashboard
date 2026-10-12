@@ -199,7 +199,7 @@ function parseCSV(text){
  if(field.length || row.length){row.push(field);rows.push(row);}
  return rows.filter(r=>r.some(v=>String(v).trim()!==""));
 }
-const GITHUB_WORKBOOK_URL="https://raw.githubusercontent.com/manjumenon/LR_PALYA_CHIT/main/LR_CHIT.xlsx";
+const GITHUB_WORKBOOK_URL="https://raw.githubusercontent.com/manjumenon/kuruba-chit-dashboard/main/LR_CHIT.xlsx";
 function sheetToTable(ws){
  const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
  const cleaned=raw.map(r=>r.map(v=>String(v??""))).filter(r=>r.some(v=>v.trim()!==""));
@@ -254,7 +254,7 @@ function updateDashboardMetrics(wb){
    const activeIdx=sheet.headers.findIndex(h=>norm(h).includes("active"));
    if(activeIdx<0) return sheet.rows.length;
    const active=sheet.rows.filter(r=>["yes","true","1","active"].includes(String(r[activeIdx]??"").trim().toLowerCase()));
-   return active.length || sheet.rows.length;
+   return active.length;
  };
  const memberValue=findKV(["members","member count","total members"]);
  const contribution=findKV(["monthly contribution per member","monthly contribution","contribution per member"]);
@@ -276,7 +276,7 @@ function updateDashboardMetrics(wb){
 async function loadDashboardData(){
  const status=document.getElementById("refreshStatus");
  try{
-  if(status) status.textContent="Fetching latest workbook from public GitHub…";
+  if(status) status.textContent="Fetching latest workbook from GitHub…";
   const response=await fetch(GITHUB_WORKBOOK_URL+"?v="+Date.now(),{cache:"no-store"});
   if(!response.ok) throw new Error("GitHub workbook not found ("+response.status+"). Upload LR_CHIT.xlsx to the repository root.");
   const buffer=await response.arrayBuffer();
